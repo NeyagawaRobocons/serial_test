@@ -1,47 +1,53 @@
-#include "Serial.hpp"
-#include <vector>
-#include <string>
 #include <iostream>
-
-using namespace std;
+#include <vector>
+#include <filesystem>
+#include <termios.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 int main() {
-    //デバイス一覧
-    auto list = getSerialList();
-    for (const auto& info : list) {
-        cout << "device name:" << info.device_name() << endl;
-        cout << "name:" << info.port() << "\n" << endl;
-    }
-
-    Serial::Config config;
-    config.baudRate = 115200;
-    config.byteSize = 8;
-    config.parity = Serial::Config::Parity::NO;
-    config.stopBits = Serial::Config::StopBits::ONE;
-
-    Serial serial;
-    int port;
-    cin >> port;
-    //オープン
-    if (!serial.open(list[port], 115200))
-        return -1;
-    //SerialInfo構造体にポート名とデバイス名が入っている
-    serial.setConfig(config);
-    SerialInfo info = serial.getInfo();
-    cout << "open success" << endl;
-    cout << "device name:" << info.device_name() << endl;
-    cout << "name:" << info.port() << "\n" << endl;
-    Serial::Config config_ = serial.getConfig();
-    cout << "baudRate:" << config_.baudRate << endl;
-    cout << "byteSize:" << config_.byteSize << endl;
-    cout << "parity:" << (int)config_.parity << endl;
-    cout << "stopBits:" << (int)config_.stopBits << endl;
-    //以下ループ
-    while (true) {
-        auto v = serial.read();
-        for (auto c : v) {
-            cout << c;
+    std::vector <std::string> devices;
+    for(const std::filesystem::directory_entry &i : std::filesystem::recursive_directory_iterator("/dev")){
+        if(i.path().filename().string().find("ttyNucleo") != std::string::npos){
+            std::cout << "device : "<<i.path().filename().string() << std::endl;
+            devices.push_back("/dev/" + i.path().filename().string());
         }
     }
+    int fd = open(devices[0].c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
+    if (fd < 0) {
+        std::cout << "open error" << std::endl;
+        return -1;
+    }
+    std::cout << "open success" << std::endl;
+
+    struct termios tio;
+    tio.c_cflag += CREAD;               // 受信有効
+    tio.c_cflag += CLOCAL;              // ローカルライン（モデム制御なし）
+    tio.c_cflag += CS8;                 // データビット:8bit
+    tio.c_cflag += 0;                   // ストップビット:1bit
+    tio.c_cflag += 0;                   // パリティ:None
+    cfsetispeed( &tio, B115200 );
+    cfsetospeed( &tio, B115200 );
+    cfmakeraw(&tio);                    // RAWモード
+    tcsetattr( fd, TCSANOW, &tio );     // デバイスに設定を行う
+    ioctl(fd, TCSETS, &tio);            // ポートの設定を有効にする
+
+    char buf[256];
+    while(1) {
+        ssize_t len = read(fd, buf, sizeof(buf));
+        if (0 < len) {
+            for(int i = 0; i < len; i++) {
+                std::cout << +buf[i];
+            }
+        }
+
+        // エコーバック
+        write(fd, buf, len);
+    }
+
+    close(fd);
     return 0;
 }
