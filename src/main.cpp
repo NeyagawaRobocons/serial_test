@@ -4,8 +4,6 @@
 #include <termios.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 
 int main() {
@@ -40,7 +38,7 @@ int main() {
         ssize_t len = read(fd, buf, sizeof(buf));
         if (0 < len) {
             for(int i = 0; i < len; i++) {
-                std::cout << +buf[i];
+                std::cout << "0x" << std::hex << +buf[i] << std::endl;
             }
         }
 
